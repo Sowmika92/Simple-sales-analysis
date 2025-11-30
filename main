@@ -1,0 +1,186 @@
+import argparse
+import os
+import sys
+from typing import Dict
+
+import pandas as pd
+
+
+def validate_columns(df: pd.DataFrame):
+    required = {"Product", "Price", "Quantity"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Input CSV is missing required columns: {', '.join(missing)}")
+
+
+def analyze_sales(df: pd.DataFrame) -> Dict:
+    # Ensure numeric types
+    df = df.copy()
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
+    df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce")
+
+    # Drop rows with missing essential numeric data
+    before = len(df)
+    df = df.dropna(subset=["Price", "Quantity", "Product"])
+    after = len(df)
+
+    report = {}
+    if before != after:
+        report["rows_dropped_due_to_missing_values"] = before - after
+
+    # Revenue column
+    df["Revenue"] = df["Price"] * df["Quantity"]
+
+    # Total sales (revenue)
+    total_sales = df["Revenue"].sum()
+
+    # Best-selling product by revenue
+    revenue_by_product = df.groupby("Product", as_index=True)["Revenue"].sum()
+    best_by_revenue = revenue_by_product.idxmax() if not revenue_by_product.empty else None
+    best_by_revenue_value = revenue_by_product.max() if not revenue_by_product.empty else 0.0
+
+    # Best-selling product by quantity
+    qty_by_product = df.groupby("Product", as_index=True)["Quantity"].sum()
+    best_by_quantity = qty_by_product.idxmax() if not qty_by_product.empty else None
+    best_by_quantity_value = qty_by_product.max() if not qty_by_product.empty else 0
+
+    # Build report dictionary
+    report.update(
+        {
+            "total_sales_revenue": float(total_sales),
+            "best_selling_product_by_revenue": {
+                "product": best_by_revenue,
+                "revenue": float(best_by_revenue_value),
+            },
+            "best_selling_product_by_quantity": {
+                "product": best_by_quantity,
+                "quantity": int(best_by_quantity_value),
+            },
+            "revenue_by_product": revenue_by_product.sort_values(ascending=False).to_dict(),
+            "quantity_by_product": qty_by_product.sort_values(ascending=False).to_dict(),
+        }
+    )
+    return report
+
+
+def save_report_text(report: Dict, path: str):
+    lines = []
+    lines.append("SALES ANALYSIS REPORT")
+    lines.append("=====================\n")
+    lines.append(f"Total sales (revenue): ${report['total_sales_revenue']:.2f}\n")
+
+    br = report["best_selling_product_by_revenue"]
+    if br["product"] is not None:
+        lines.append(
+            f"Best-selling product (by revenue): {br['product']} — ${br['revenue']:.2f}\n"
+        )
+    else:
+        lines.append("Best-selling product (by revenue): No data\n")
+
+    bq = report["best_selling_product_by_quantity"]
+    if bq["product"] is not None:
+        lines.append(
+            f"Best-selling product (by quantity): {bq['product']} — {bq['quantity']} units\n"
+        )
+    else:
+        lines.append("Best-selling product (by quantity): No data\n")
+
+    lines.append("\nRevenue by product:")
+    for prod, rev in report["revenue_by_product"].items():
+        lines.append(f" - {prod}: ${rev:.2f}")
+
+    lines.append("\nQuantity sold by product:")
+    for prod, qty in report["quantity_by_product"].items():
+        lines.append(f" - {prod}: {int(qty)} units")
+
+    if "rows_dropped_due_to_missing_values" in report:
+        lines.append(
+            f"\nNote: Dropped {report['rows_dropped_due_to_missing_values']} rows "
+            "due to missing or invalid Price/Quantity/Product."
+        )
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def save_report_csv_summaries(report: Dict, out_dir: str):
+    # Save revenue_by_product and quantity_by_product as CSVs
+    rev_df = pd.DataFrame(
+        list(report["revenue_by_product"].items()), columns=["Product", "Revenue"]
+    ).sort_values("Revenue", ascending=False)
+    qty_df = pd.DataFrame(
+        list(report["quantity_by_product"].items()), columns=["Product", "Quantity"]
+    ).sort_values("Quantity", ascending=False)
+
+    rev_df.to_csv(os.path.join(out_dir, "revenue_by_product.csv"), index=False)
+    qty_df.to_csv(os.path.join(out_dir, "quantity_by_product.csv"), index=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze a simple sales CSV and produce a basic report."
+    )
+    parser.add_argument(
+        "--input",
+        "-i",
+        required=True,
+        help="Path to sales CSV file (must include Product, Price, Quantity columns).",
+    )
+    parser.add_argument(
+        "--out",
+        "-o",
+        default="report_output",
+        help="Output directory to save report files (created if missing).",
+    )
+    args = parser.parse_args()
+
+    input_path = args.input
+    out_dir = args.out
+
+    if not os.path.exists(input_path):
+        print(f"Error: input file not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    try:
+        df = pd.read_csv(input_path)
+    except Exception as e:
+        print(f"Error reading CSV: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        validate_columns(df)
+    except ValueError as e:
+        print(f"Validation error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        report = analyze_sales(df)
+    except Exception as e:
+        print(f"Analysis error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Save reports
+    text_path = os.path.join(out_dir, "sales_report.txt")
+    save_report_text(report, text_path)
+    save_report_csv_summaries(report, out_dir)
+
+    # Print short summary to console
+    print("Analysis complete. Summary:")
+    print(f" - Total revenue: ${report['total_sales_revenue']:.2f}")
+    br = report["best_selling_product_by_revenue"]
+    if br["product"] is not None:
+        print(
+            f" - Best by revenue: {br['product']} (${br['revenue']:.2f})"
+        )
+    bq = report["best_selling_product_by_quantity"]
+    if bq["product"] is not None:
+        print(f" - Best by quantity: {bq['product']} ({bq['quantity']} units)")
+
+    print(f"\nFull report saved to: {os.path.abspath(text_path)}")
+    print(f"CSV summaries saved to: {os.path.abspath(out_dir)}")
+
+
+if __name__ == "__main__":
+    main()
