@@ -1,0 +1,41 @@
+# Simple Sales Analysis
+
+This small project demonstrates how to analyze a simple sales dataset using pandas. It computes:
+- Total sales (revenue = Price * Quantity)
+- Best-selling product by revenue
+- Best-selling product by quantity
+- Saves a human-readable text report and CSV summaries
+
+## Files included
+- sales_data.csv — example dataset (small, <100 rows)
+- sales_analysis.py — script to run the analysis
+- requirements.txt — Python dependency list
+
+## Quick start
+1. Create a virtual environment (recommended):
+   python -m venv venv
+   source venv/bin/activate  # macOS/Linux
+   venv\Scripts\activate     # Windows
+
+2. Install dependencies:
+   pip install -r requirements.txt
+
+3. Run the analysis:
+   python sales_analysis.py --input sales_data.csv --out report_output
+
+4. Outputs:
+   - report_output/sales_report.txt — plain text report
+   - report_output/revenue_by_product.csv — revenue summary by product
+   - report_output/quantity_by_product.csv — quantity summary by product
+
+## Tips
+- Start with small datasets (<100 rows) while you're learning.
+- If you see parsing errors, check that Price and Quantity columns are numeric.
+- Search YouTube: "Pandas for absolute beginners" for tutorials.
+- Use this template with your own expense or sales CSV files.
+
+## What this demonstrates
+- Reading CSVs with pandas
+- Grouping and aggregation (sum)
+- Saving results to text and CSV
+- Basic error handling for missing or invalid data
